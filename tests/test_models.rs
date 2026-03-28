@@ -160,7 +160,7 @@ fn test_private_user() {
             "product": "open",
             "type": "user",
             "uri": "spotify:user:waq5aexykhm6nlv0cnwdieng0"
-          } 
+          }
         "#;
     let private_user: PrivateUser = deserialize(json_str);
     assert_eq!(private_user.display_name.unwrap(), "Sergey");
@@ -404,7 +404,7 @@ fn test_recommendations_seed() {
             "href": "https://api.spotify.com/v1/artists/4NHQUGzhtTLFvgF5SZesLK",
             "id": "4NHQUGzhtTLFvgF5SZesLK",
             "type": "ARTIST"
-        }        
+        }
         "#;
     let seed: RecommendationsSeed = deserialize(json_str);
     assert_eq!(seed._type, RecommendationsSeedType::Artist);
@@ -546,6 +546,61 @@ fn test_full_playlist() {
         "spotify:playlist:3cEYpjA9oz9GiPac4AsH4n".to_string()
     );
     assert_eq!(full_playlist.followers.total, 109);
+    assert_eq!(full_playlist.items.total, 5);
+    assert_eq!(full_playlist.tracks.total, 5);
+}
+
+#[test]
+#[wasm_bindgen_test]
+fn test_full_playlist_accepts_items_field() {
+    let json = r#"
+    {
+      "collaborative": false,
+      "description": "A playlist for testing purposes",
+      "external_urls": {
+        "spotify": "https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n"
+      },
+      "followers": {
+        "href": null,
+        "total": 109
+      },
+      "href": "https://api.spotify.com/v1/playlists/3cEYpjA9oz9GiPac4AsH4n",
+      "id": "3cEYpjA9oz9GiPac4AsH4n",
+      "images": [],
+      "name": "Spotify Web API Testing playlist",
+      "owner": {
+        "display_name": "JMPerez²",
+        "external_urls": {
+          "spotify": "https://open.spotify.com/user/jmperezperez"
+        },
+        "href": "https://api.spotify.com/v1/users/jmperezperez",
+        "id": "jmperezperez",
+        "type": "user",
+        "uri": "spotify:user:jmperezperez"
+      },
+      "public": true,
+      "snapshot_id": "MTgsZWFmNmZiNTIzYTg4ODM0OGQzZWQzOGI4NTdkNTJlMjU0OWFkYTUxMA==",
+      "items": {
+        "href": "https://api.spotify.com/v1/playlists/3cEYpjA9oz9GiPac4AsH4n/items?offset=0&limit=100",
+        "items": [],
+        "limit": 100,
+        "next": null,
+        "offset": 0,
+        "previous": null,
+        "total": 5
+      },
+      "type": "playlist",
+      "uri": "spotify:playlist:3cEYpjA9oz9GiPac4AsH4n"
+    }
+    "#;
+    let full_playlist: FullPlaylist = deserialize(json);
+    assert_eq!(full_playlist.items.total, 5);
+    assert_eq!(
+        full_playlist.items.href,
+        "https://api.spotify.com/v1/playlists/3cEYpjA9oz9GiPac4AsH4n/items?offset=0&limit=100"
+    );
+    assert_eq!(full_playlist.tracks.total, 5);
+    assert_eq!(full_playlist.tracks.href, full_playlist.items.href);
 }
 
 #[test]
@@ -665,7 +720,7 @@ fn test_resume_point() {
     {
         "fully_played": false,
         "resume_position_ms": 423432
-    }   
+    }
     "#;
     let resume_point: ResumePoint = deserialize(json);
     let duration = Duration::try_milliseconds(423432).unwrap();
@@ -1177,7 +1232,7 @@ fn test_simplified_playlist() {
     },
     "type": "playlist",
     "uri": "spotify:playlist:37i9dQZF1DX8mBRYewE6or"
-  } 
+  }
   "#;
     let simplified_playlist: SimplifiedPlaylist = deserialize(json);
     assert_eq!(
