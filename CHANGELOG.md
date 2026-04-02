@@ -1,6 +1,6 @@
 ## unreleased
 Bugfixes
-- Fix: FullArtist: deprecate and add default for genres.
+- ([#564](https://github.com/ramsayleung/rspotify/pull/564)) Fix: FullArtist: deprecate and add default for genres.
 
 ## 0.16.0 (2026.03.22)
 
