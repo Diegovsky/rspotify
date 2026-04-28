@@ -197,10 +197,10 @@ macro_rules! define_idtypes {
                 "ID of type [`Type::", stringify!($type), "`]. The validity of \
                 its characters is defined by the closure `",
                 stringify!($validity), "`.\n\nRefer to the [module-level \
-                docs][`crate::idtypes`] for more information. "
+                 docs][`crate::idtypes`] for more information. "
             )]
             #[repr(transparent)]
-            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Hash)]
+            #[derive(Clone, Debug, PartialEq, Eq, Hash)]
             pub struct $name<'a>(Cow<'a, str>);
 
             impl<'a> $name<'a> {
@@ -437,6 +437,14 @@ macro_rules! define_idtypes {
                     write!(f, "{}", self.uri())
                 }
             }
+
+            impl Serialize for $name<'_> {
+                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+                where
+                    S: serde::Serializer {
+                    serializer.serialize_str(&self.uri())
+                }
+            }
         )+
     }
 }
@@ -474,141 +482,89 @@ define_idtypes!(
     }
 );
 
-// We use `enum_dispatch` for dynamic dispatch, which is not only easier to use
-// than `dyn`, but also more efficient.
-/// Grouping up multiple kinds of IDs to treat them generically. This also
-/// implements [`Id`], and [`From`] to instantiate it.
-#[enum_dispatch(Id)]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Hash)]
-pub enum PlayContextId<'a> {
-    Artist(ArtistId<'a>),
-    Album(AlbumId<'a>),
-    Playlist(PlaylistId<'a>),
-    Show(ShowId<'a>),
-}
-// These don't work with `enum_dispatch`, unfortunately.
-impl<'a> PlayContextId<'a> {
-    #[must_use]
-    pub fn as_ref(&'a self) -> Self {
-        match self {
-            PlayContextId::Artist(x) => PlayContextId::Artist(x.as_ref()),
-            PlayContextId::Album(x) => PlayContextId::Album(x.as_ref()),
-            PlayContextId::Playlist(x) => PlayContextId::Playlist(x.as_ref()),
-            PlayContextId::Show(x) => PlayContextId::Show(x.as_ref()),
+/// This macro helps defining aggregate id types.
+macro_rules! define_aggregate_idtypes {
+    ($(
+        pub enum $name:ident<$a:lifetime> {
+            $($cname:ident ($ctype:ty)),* $(,)?
         }
-    }
+    )*) => {
+        $(
+            #[enum_dispatch(Id)]
+            #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
+            #[serde(bound(deserialize = "'a: 'static"))]
+            pub enum $name<$a> {
+                $($cname ($ctype)),*
+            }
 
-    #[must_use]
-    pub fn into_static(self) -> PlayContextId<'static> {
-        match self {
-            PlayContextId::Artist(x) => PlayContextId::Artist(x.into_static()),
-            PlayContextId::Album(x) => PlayContextId::Album(x.into_static()),
-            PlayContextId::Playlist(x) => PlayContextId::Playlist(x.into_static()),
-            PlayContextId::Show(x) => PlayContextId::Show(x.into_static()),
-        }
-    }
+            impl<$a> $name<$a> {
+                /// Parse a full spotify ID (`spotify:<type>:<value>`) from string slice.
+                pub fn from_id(id: &'a str) -> Result<Self, IdError> {
+                    let (typ, value) = parse_uri(&*id)?;
+                    let this = match typ {
+                        $(
+                            Type::$cname => Self::$cname(<$ctype>::from_id(value)?),
+                        )*
+                        _ => return Err(IdError::InvalidId)
+                    };
+                    Ok(this)
+                }
 
-    #[must_use]
-    pub fn clone_static(&'a self) -> PlayContextId<'static> {
-        match self {
-            PlayContextId::Artist(x) => PlayContextId::Artist(x.clone_static()),
-            PlayContextId::Album(x) => PlayContextId::Album(x.clone_static()),
-            PlayContextId::Playlist(x) => PlayContextId::Playlist(x.clone_static()),
-            PlayContextId::Show(x) => PlayContextId::Show(x.clone_static()),
-        }
-    }
-}
 
-/// Grouping up multiple kinds of IDs to treat them generically. This also
-/// implements [`Id`] and [`From`] to instantiate it.
-#[enum_dispatch(Id)]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Hash)]
-pub enum PlayableId<'a> {
-    Track(TrackId<'a>),
-    Episode(EpisodeId<'a>),
-}
-// These don't work with `enum_dispatch`, unfortunately.
-impl<'a> PlayableId<'a> {
-    #[must_use]
-    pub fn as_ref(&'a self) -> Self {
-        match self {
-            PlayableId::Track(x) => PlayableId::Track(x.as_ref()),
-            PlayableId::Episode(x) => PlayableId::Episode(x.as_ref()),
-        }
-    }
+                #[must_use]
+                pub fn as_ref(&'a self) -> Self {
+                    match self {
+                        $(
+                            Self::$cname(v) => Self::$cname(v.as_ref()),
+                        )*
+                    }
+                }
 
-    #[must_use]
-    pub fn into_static(self) -> PlayableId<'static> {
-        match self {
-            PlayableId::Track(x) => PlayableId::Track(x.into_static()),
-            PlayableId::Episode(x) => PlayableId::Episode(x.into_static()),
-        }
-    }
+                #[must_use]
+                pub fn into_static(self) -> $name<'static> {
+                    match self {
+                        $(
+                            Self::$cname(v) => $name::$cname(v.into_static()),
+                        )*
+                    }
+                }
 
-    #[must_use]
-    pub fn clone_static(&'a self) -> PlayableId<'static> {
-        match self {
-            PlayableId::Track(x) => PlayableId::Track(x.clone_static()),
-            PlayableId::Episode(x) => PlayableId::Episode(x.clone_static()),
-        }
-    }
+                #[must_use]
+                pub fn clone_static(&'a self) -> $name<'static> {
+                    match self {
+                        $(
+                            Self::$cname(v) => $name::$cname(v.clone_static()),
+                        )*
+                    }
+                }
+            }
+
+        )*
+    };
 }
 
-/// Grouping up multiple kinds of IDs to treat them generically in the library.
-/// This also implements [`Id`] and [`From`] to instantiate it.
-#[enum_dispatch(Id)]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Hash)]
-pub enum LibraryId<'a> {
-    Track(TrackId<'a>),
-    Album(AlbumId<'a>),
-    Episode(EpisodeId<'a>),
-    Show(ShowId<'a>),
-    Artist(ArtistId<'a>),
-    User(UserId<'a>),
-    Playlist(PlaylistId<'a>),
-}
-
-impl<'a> LibraryId<'a> {
-    #[must_use]
-    pub fn as_ref(&'a self) -> Self {
-        match self {
-            LibraryId::Track(x) => LibraryId::Track(x.as_ref()),
-            LibraryId::Album(x) => LibraryId::Album(x.as_ref()),
-            LibraryId::Episode(x) => LibraryId::Episode(x.as_ref()),
-            LibraryId::Show(x) => LibraryId::Show(x.as_ref()),
-            LibraryId::Artist(x) => LibraryId::Artist(x.as_ref()),
-            LibraryId::User(x) => LibraryId::User(x.as_ref()),
-            LibraryId::Playlist(x) => LibraryId::Playlist(x.as_ref()),
-        }
+define_aggregate_idtypes! {
+  pub enum PlayableId<'a> {
+      Track(TrackId<'a>),
+      Episode(EpisodeId<'a>)
+  }
+    pub enum LibraryId<'a> {
+        Track(TrackId<'a>),
+        Album(AlbumId<'a>),
+        Episode(EpisodeId<'a>),
+        Show(ShowId<'a>),
+        Artist(ArtistId<'a>),
+        User(UserId<'a>),
+        Playlist(PlaylistId<'a>),
     }
 
-    #[must_use]
-    pub fn into_static(self) -> LibraryId<'static> {
-        match self {
-            LibraryId::Track(x) => LibraryId::Track(x.into_static()),
-            LibraryId::Album(x) => LibraryId::Album(x.into_static()),
-            LibraryId::Episode(x) => LibraryId::Episode(x.into_static()),
-            LibraryId::Show(x) => LibraryId::Show(x.into_static()),
-            LibraryId::Artist(x) => LibraryId::Artist(x.into_static()),
-            LibraryId::User(x) => LibraryId::User(x.into_static()),
-            LibraryId::Playlist(x) => LibraryId::Playlist(x.into_static()),
-        }
-    }
-
-    #[must_use]
-    pub fn clone_static(&'a self) -> LibraryId<'static> {
-        match self {
-            LibraryId::Track(x) => LibraryId::Track(x.clone_static()),
-            LibraryId::Album(x) => LibraryId::Album(x.clone_static()),
-            LibraryId::Episode(x) => LibraryId::Episode(x.clone_static()),
-            LibraryId::Show(x) => LibraryId::Show(x.clone_static()),
-            LibraryId::Artist(x) => LibraryId::Artist(x.clone_static()),
-            LibraryId::User(x) => LibraryId::User(x.clone_static()),
-            LibraryId::Playlist(x) => LibraryId::Playlist(x.clone_static()),
-        }
+    pub enum PlayContextId<'a> {
+        Artist(ArtistId<'a>),
+        Album(AlbumId<'a>),
+        Playlist(PlaylistId<'a>),
+        Show(ShowId<'a>),
     }
 }
-
 #[cfg(test)]
 mod test {
     use super::*;
